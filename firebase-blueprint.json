@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "JournalEntry": {
+      "title": "Journal Entry",
+      "description": "A user's journal entry and AI reflection.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns the entry"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The user's input prompt"
+        },
+        "response": {
+          "type": "string",
+          "description": "The AI's generated response"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp of the entry"
+        }
+      },
+      "required": ["userId", "prompt", "response", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/interactions/{interactionId}": {
+      "schema": {
+        "$ref": "#/entities/JournalEntry"
+      },
+      "description": "Stores user journal entries and AI reflections."
+    }
+  }
+}
