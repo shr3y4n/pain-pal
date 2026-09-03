@@ -1,36 +1,58 @@
 {
   "entities": {
-    "JournalEntry": {
-      "title": "Journal Entry",
-      "description": "A user's journal entry and AI reflection.",
+    "JournalInteraction": {
+      "title": "Journal Interaction",
+      "description": "A turn in the user's private reflection journal (user entry or Pain-Pal reflection).",
       "type": "object",
       "properties": {
-        "userId": {
+        "role": {
           "type": "string",
-          "description": "The ID of the user who owns the entry"
+          "enum": ["user", "model"],
+          "description": "The speaker role of this turn."
         },
-        "prompt": {
+        "text": {
           "type": "string",
-          "description": "The user's input prompt"
-        },
-        "response": {
-          "type": "string",
-          "description": "The AI's generated response"
+          "description": "The text content of the journal prompt or reflection."
         },
         "createdAt": {
           "type": "number",
-          "description": "Timestamp of the entry"
+          "description": "Timestamp in milliseconds when this interaction turn was recorded."
+        },
+        "modelUsed": {
+          "type": "string",
+          "description": "The Gemini model or safety guard identifier used."
+        },
+        "mood": {
+          "type": "string",
+          "description": "Optional emotional classification (e.g. Reflective, Hopeful)."
+        },
+        "moodEmoji": {
+          "type": "string",
+          "description": "Optional visual emoji representation of the mood."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Categorical tags for tracking themes over time."
+        },
+        "insight": {
+          "type": "string",
+          "description": "Brief constructive reflection question or takeaway."
+        },
+        "safetyRouted": {
+          "type": "boolean",
+          "description": "Flag set if safety routing layer was activated."
         }
       },
-      "required": ["userId", "prompt", "response", "createdAt"]
+      "required": ["role", "text", "createdAt"]
     }
   },
   "firestore": {
     "users/{userId}/interactions/{interactionId}": {
       "schema": {
-        "$ref": "#/entities/JournalEntry"
+        "$ref": "#/entities/JournalInteraction"
       },
-      "description": "Stores user journal entries and AI reflections."
+      "description": "Stores user journal entries and Pain-Pal reflection turns, isolated by Firebase UID."
     }
   }
 }

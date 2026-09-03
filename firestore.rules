@@ -1,11 +1,45 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read/write their own interaction sub-collection
-    match /users/{userId}/interactions/{interactionId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+    // Helper functions for strict validation
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    // Deny all other paths by default
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidInteraction() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['role', 'text', 'createdAt', 'modelUsed', 'mood', 'moodEmoji', 'tags', 'insight', 'safetyRouted'])
+        && data.role in ['user', 'model']
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 5000
+        && data.createdAt is number;
+    }
+
+    // Interactions Subcollection: User-isolated, strictly schema-validated, immutable from client
+    match /users/{userId}/interactions/{interactionId} {
+      // Authenticated users can read only their own journal turns
+      allow read: if isOwner(userId);
+
+      // Client create allowed only with exact valid schema
+      allow create: if isOwner(userId) && isValidInteraction();
+
+      // Journal interactions are immutable once written; updates and deletes disallowed from client
+      allow update, delete: if false;
+    }
+
+    // Safety events audit metadata (no prompt text stored, client read-only)
+    match /users/{userId}/safety_events/{eventId} {
+      allow read: if isOwner(userId);
+      allow write: if false; // Server Admin SDK only
+    }
+
+    // Default deny: all other paths are explicitly rejected
     match /{document=**} {
       allow read, write: if false;
     }

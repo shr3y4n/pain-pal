@@ -1,6 +1,6 @@
 {
-  "name": "Secure Cloud Run Template",
-  "description": "Production-ready scaffolding featuring agentic threat modeling, secure secret management, and Firebase Auth/Firestore isolation.",
+  "name": "Pain-Pal",
+  "description": "A private AI journaling and reflection companion that helps users process difficult thoughts, reflect on experiences, and identify patterns over time.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
