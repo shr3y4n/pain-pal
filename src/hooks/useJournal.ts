@@ -5,6 +5,7 @@
  * Pain-Pal Journal Hook
  * Coordinates backend history loading (GET /api/journal/history),
  * real-time Firestore synchronization, and authenticated reflection dispatch (POST /api/journal).
+ * Includes seamless standalone client-side Gemini fallback for static hosts like GitHub Pages.
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -12,6 +13,67 @@ import { User } from "firebase/auth";
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { InteractionMessage, JournalSubmissionResponse } from "../types/journal";
+
+/**
+ * Direct Gemini REST fallback for standalone static deployments (e.g. GitHub Pages).
+ */
+async function generateClientReflection(prompt: string): Promise<JournalSubmissionResponse> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("No backend API or VITE_GEMINI_API_KEY configured for reflection.");
+  }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [
+          {
+            text:
+              "You are Pain-Pal, a thoughtful AI reflection companion for personal journaling. Speak with warmth, empathy, and grounded perspective. Respond ONLY with a valid JSON object matching: { \"reflection\": \"2-3 empathetic paragraphs\", \"mood\": \"One word mood\", \"moodEmoji\": \"Single emoji\", \"tags\": [\"tag1\", \"tag2\"], \"insight\": \"A brief gentle takeaway\" }"
+          }
+        ]
+      },
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    })
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    throw new Error(`Direct AI generation failed: ${errorBody}`);
+  }
+
+  const data = await res.json();
+  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  let parsed: any = {};
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    parsed = {
+      reflection: rawText,
+      mood: "Reflective",
+      moodEmoji: "🌱",
+      tags: ["reflection"],
+      insight: "Take a deep breath and observe your thoughts."
+    };
+  }
+
+  return {
+    success: true,
+    response:
+      parsed.reflection ||
+      "Thank you for sharing your thoughts. Take a moment to breathe and observe what you feel.",
+    mood: parsed.mood || "Reflective",
+    moodEmoji: parsed.moodEmoji || "🌱",
+    tags: parsed.tags || ["reflection"],
+    insight: parsed.insight || "You are making space for self-understanding.",
+    modelUsed: "gemini-flash-lite-latest"
+  };
+}
 
 export function useJournal(user: User | null) {
   const [messages, setMessages] = useState<InteractionMessage[]>([]);
@@ -129,7 +191,7 @@ export function useJournal(user: User | null) {
     };
   }, [user]);
 
-  // 3. Submit journal prompt to POST /api/journal
+  // 3. Submit journal prompt
   const submitReflection = useCallback(
     async (promptText: string): Promise<boolean> => {
       if (!user) {
@@ -161,24 +223,45 @@ export function useJournal(user: User | null) {
       // Optimistically add user turn immediately
       setMessages((prev) => [...prev, userMsg]);
 
+      let data: JournalSubmissionResponse | null = null;
+
       try {
         const apiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
         const token = await user.getIdToken();
-        const res = await fetch(`${apiBase}/api/journal`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ prompt: trimmed })
-        });
 
-        const data: JournalSubmissionResponse = await res.json();
+        // Attempt Express backend first (Cloud Run / localhost)
+        try {
+          const res = await fetch(`${apiBase}/api/journal`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ prompt: trimmed })
+          });
 
-        if (!res.ok) {
-          // Remove optimistic message if submission failed
-          setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
-          throw new Error(data.error || "Failed to process reflection.");
+          if (res.ok) {
+            data = await res.json();
+          } else if (res.status === 404 && import.meta.env.VITE_GEMINI_API_KEY) {
+            // Standalone static deployment (GitHub Pages) fallback
+            console.log("Static host detected. Falling back to direct Gemini client reflection...");
+            data = await generateClientReflection(trimmed);
+          } else {
+            const errJson = await res.json().catch(() => ({}));
+            throw new Error(errJson.error || `Server responded with status ${res.status}`);
+          }
+        } catch (fetchErr: any) {
+          // If server is unreachable (e.g. GitHub Pages without Cloud Run backend)
+          if (import.meta.env.VITE_GEMINI_API_KEY) {
+            console.log("Express backend unreachable. Falling back to direct Gemini client reflection...");
+            data = await generateClientReflection(trimmed);
+          } else {
+            throw fetchErr;
+          }
+        }
+
+        if (!data) {
+          throw new Error("Unable to retrieve reflection response.");
         }
 
         if (data.modelUsed) {
@@ -202,7 +285,7 @@ export function useJournal(user: User | null) {
         // Immediately display the model's reflection!
         setMessages((prev) => [...prev, modelMsg]);
 
-        // Client-side Firestore persistence (ensures instant persistence even without server GCP ADC)
+        // Client-side Firestore persistence
         try {
           const userDocRef = doc(collection(db, "users", user.uid, "interactions"), userMsg.id);
           const modelDocRef = doc(collection(db, "users", user.uid, "interactions"), modelMsg.id);
@@ -232,6 +315,7 @@ export function useJournal(user: User | null) {
         return true;
       } catch (err: any) {
         console.error("Submission failed:", err);
+        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
         setError(err?.message || "Unable to reach reflection companion. Please try again.");
         return false;
       } finally {

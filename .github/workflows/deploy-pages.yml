@@ -37,6 +37,15 @@ jobs:
         run: npx vite build --base=./
         env:
           VITE_API_URL: ${{ secrets.CLOUD_RUN_API_URL }}
+          VITE_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_FIREBASE_PROJECT_ID: "user-authenticated-ai-app"
+          VITE_FIREBASE_API_KEY: "AIzaSyAz3WEeCZvpWyRXvjleQ8yZ_mK8Co8zAt8"
+          VITE_FIREBASE_AUTH_DOMAIN: "user-authenticated-ai-app.firebaseapp.com"
+          VITE_FIREBASE_STORAGE_BUCKET: "user-authenticated-ai-app.firebasestorage.app"
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "1011512658257"
+          VITE_FIREBASE_APP_ID: "1:1011512658257:web:d20502c05ca7779e18eb70"
+          VITE_FIREBASE_MEASUREMENT_ID: "G-3P5WGQHL1J"
+          VITE_FIRESTORE_DATABASE_ID: "(default)"
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
