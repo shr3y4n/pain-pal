@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { User } from "firebase/auth";
-import { collection, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { InteractionMessage, JournalSubmissionResponse } from "../types/journal";
 
@@ -44,7 +44,7 @@ export function useJournal(user: User | null) {
 
         if (res.ok) {
           const data = await res.json();
-          if (isMounted && Array.isArray(data.interactions)) {
+          if (isMounted && Array.isArray(data.interactions) && data.interactions.length > 0) {
             setMessages(data.interactions);
           }
         }
@@ -88,8 +88,30 @@ export function useJournal(user: User | null) {
           }
         });
 
-        if (isMounted) {
-          setMessages(liveTurns);
+        if (isMounted && liveTurns.length > 0) {
+          setMessages((prev) => {
+            const docIds = new Set(liveTurns.map((t) => t.id));
+            const pendingOptimistic = prev.filter((p) => !docIds.has(p.id));
+            const combined = [...liveTurns, ...pendingOptimistic].sort(
+              (a, b) => a.createdAt - b.createdAt
+            );
+
+            // Deduplicate matching role + text within 5 seconds
+            const unique: InteractionMessage[] = [];
+            for (const item of combined) {
+              const dup = unique.find(
+                (u) =>
+                  u.role === item.role &&
+                  u.text === item.text &&
+                  Math.abs(u.createdAt - item.createdAt) < 5000
+              );
+              if (!dup) {
+                unique.push(item);
+              }
+            }
+            return unique;
+          });
+
           const lastModel = [...liveTurns].reverse().find((m) => m.role === "model" && m.modelUsed);
           if (lastModel?.modelUsed) {
             setActiveModel(lastModel.modelUsed);
@@ -97,10 +119,7 @@ export function useJournal(user: User | null) {
         }
       },
       (syncErr) => {
-        console.error("Firestore sync error:", syncErr);
-        if (isMounted) {
-          setError("Unable to sync private journal entries in real-time.");
-        }
+        console.warn("Firestore sync notification:", syncErr?.message || syncErr);
       }
     );
 
@@ -131,6 +150,17 @@ export function useJournal(user: User | null) {
       setIsSubmitting(true);
       setError(null);
 
+      const now = Date.now();
+      const userMsg: InteractionMessage = {
+        id: `user-${now}`,
+        role: "user",
+        text: trimmed,
+        createdAt: now
+      };
+
+      // Optimistically add user turn immediately
+      setMessages((prev) => [...prev, userMsg]);
+
       try {
         const apiBase = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
         const token = await user.getIdToken();
@@ -146,11 +176,57 @@ export function useJournal(user: User | null) {
         const data: JournalSubmissionResponse = await res.json();
 
         if (!res.ok) {
+          // Remove optimistic message if submission failed
+          setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
           throw new Error(data.error || "Failed to process reflection.");
         }
 
         if (data.modelUsed) {
           setActiveModel(data.modelUsed);
+        }
+
+        const modelMsg: InteractionMessage = {
+          id: `model-${now + 1}`,
+          role: "model",
+          text: data.response,
+          createdAt: now + 1,
+          modelUsed: data.modelUsed,
+          mood: data.mood,
+          moodEmoji: data.moodEmoji,
+          tags: data.tags,
+          insight: data.insight,
+          safetyRouted: data.safetyRouted,
+          crisisResources: data.crisisResources
+        };
+
+        // Immediately display the model's reflection!
+        setMessages((prev) => [...prev, modelMsg]);
+
+        // Client-side Firestore persistence (ensures instant persistence even without server GCP ADC)
+        try {
+          const userDocRef = doc(collection(db, "users", user.uid, "interactions"), userMsg.id);
+          const modelDocRef = doc(collection(db, "users", user.uid, "interactions"), modelMsg.id);
+
+          const modelPayload: Record<string, any> = {
+            role: "model",
+            text: data.response,
+            createdAt: now + 1
+          };
+          if (data.modelUsed) modelPayload.modelUsed = data.modelUsed;
+          if (data.mood) modelPayload.mood = data.mood;
+          if (data.moodEmoji) modelPayload.moodEmoji = data.moodEmoji;
+          if (data.tags && data.tags.length > 0) modelPayload.tags = data.tags;
+          if (data.insight) modelPayload.insight = data.insight;
+          if (data.safetyRouted) modelPayload.safetyRouted = data.safetyRouted;
+
+          await setDoc(userDocRef, {
+            role: "user",
+            text: trimmed,
+            createdAt: now
+          });
+          await setDoc(modelDocRef, modelPayload);
+        } catch (clientFsErr) {
+          console.warn("Client Firestore backup save notice:", clientFsErr);
         }
 
         return true;
