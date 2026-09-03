@@ -22,14 +22,15 @@ export async function initializeGeminiSecret(): Promise<string> {
     return cachedGeminiApiKey;
   }
 
-  // Local development fallback
+  // Local development: Read from GEMINI_API_KEY environment variable
   if (process.env.NODE_ENV !== "production") {
     const localKey = process.env.GEMINI_API_KEY?.trim();
     if (localKey) {
       cachedGeminiApiKey = localKey;
       return cachedGeminiApiKey;
     }
-    console.warn("⚠️  GEMINI_API_KEY not set in development environment variables.");
+    console.warn("⚠️  GEMINI_API_KEY is empty in .env. Add your Gemini API key to .env to enable AI reflections.");
+    return "";
   }
 
   // Production: Google Cloud Secret Manager
@@ -54,7 +55,6 @@ export async function initializeGeminiSecret(): Promise<string> {
     cachedGeminiApiKey = payload;
     return cachedGeminiApiKey;
   } catch (error: any) {
-    // If running in development without Secret Manager credentials, fallback if env is set
     if (process.env.GEMINI_API_KEY?.trim()) {
       console.warn("Secret Manager retrieval failed; falling back to GEMINI_API_KEY env var.");
       cachedGeminiApiKey = process.env.GEMINI_API_KEY.trim();
@@ -63,9 +63,13 @@ export async function initializeGeminiSecret(): Promise<string> {
 
     const message = `Failed to load Gemini API secret from Secret Manager: ${error?.message || error}`;
     console.error(`❌ ${message}`);
-    throw new Error(message);
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(message);
+    }
+    return "";
   }
 }
+
 
 /**
  * Returns the cached Gemini API key without re-fetching on every request.
