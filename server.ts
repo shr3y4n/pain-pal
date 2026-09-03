@@ -20,6 +20,17 @@ import journalRouter from "./src/server/routes/journal";
 
 dotenv.config();
 
+// Graceful handling for local environment without GCP Application Default Credentials
+process.on("unhandledRejection", (reason: any) => {
+  const msg = reason?.message || String(reason);
+  if (msg.includes("Could not load the default credentials") || msg.includes("NO_ADC_FOUND")) {
+    console.warn("⚠️  [Local Dev] Google Application Default Credentials (ADC) not set locally.");
+    console.warn("   Cloud Run will authenticate automatically. For full local Firestore writes, run: gcloud auth application-default login");
+    return;
+  }
+  console.error("Unhandled Promise Rejection:", reason);
+});
+
 // ── 1. Firebase Admin Initialization ─────────────────────────────────────────
 let firebaseProjectId: string | undefined;
 try {
