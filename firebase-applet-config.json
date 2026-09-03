@@ -1,12 +1,12 @@
 {
-  "projectId": "laughing-component-dlkcn",
-  "appId": "1:172439392527:web:e1e1142bd500224900ae7a",
-  "apiKey": "AIzaSyB2PVgDtCEd8skQJdz4Zmr25qRGSlmcs2U",
-  "authDomain": "laughing-component-dlkcn.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-securecloudrunte-5820c900-92d8-442a-be4e-9d41719aa1ec",
-  "storageBucket": "laughing-component-dlkcn.firebasestorage.app",
-  "messagingSenderId": "172439392527",
-  "measurementId": "",
-  "oAuthClientId": "172439392527-4jmtd5v1boq7gp93dt6isb3u3r7cp6ib.apps.googleusercontent.com",
+  "projectId": "user-authenticated-ai-app",
+  "appId": "1:1011512658257:web:d20502c05ca7779e18eb70",
+  "apiKey": "AIzaSyAz3WEeCZvpWyRXvjleQ8yZ_mK8Co8zAt8",
+  "authDomain": "user-authenticated-ai-app.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "user-authenticated-ai-app.firebasestorage.app",
+  "messagingSenderId": "1011512658257",
+  "measurementId": "G-3P5WGQHL1J",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

@@ -36,7 +36,7 @@ try {
 if (!getApps().length) {
   try {
     initializeApp({
-      projectId: firebaseProjectId || process.env.GOOGLE_CLOUD_PROJECT
+      projectId: process.env.FIREBASE_PROJECT_ID || firebaseProjectId || process.env.GOOGLE_CLOUD_PROJECT
     });
     console.log("✅ Firebase Admin SDK initialized successfully");
   } catch (error) {

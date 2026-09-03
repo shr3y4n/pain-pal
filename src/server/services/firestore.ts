@@ -16,19 +16,22 @@ let dbInstance: Firestore | null = null;
 
 export function getAdminFirestore(): Firestore {
   if (!dbInstance) {
-    let databaseId: string | undefined;
-    try {
-      if (fs.existsSync("./firebase-applet-config.json")) {
-        const config = JSON.parse(
-          fs.readFileSync("./firebase-applet-config.json", "utf-8")
-        );
-        databaseId = config.firestoreDatabaseId;
+    let databaseId: string | undefined = process.env.FIRESTORE_DATABASE_ID;
+    if (!databaseId) {
+      try {
+        if (fs.existsSync("./firebase-applet-config.json")) {
+          const config = JSON.parse(
+            fs.readFileSync("./firebase-applet-config.json", "utf-8")
+          );
+          databaseId = config.firestoreDatabaseId;
+        }
+      } catch (e) {
+        console.warn("Could not read firestoreDatabaseId from config; using default.");
       }
-    } catch (e) {
-      console.warn("Could not read firestoreDatabaseId from config; using default.");
     }
 
-    dbInstance = getFirestore(undefined, databaseId ?? "(default)");
+    const targetDbId = databaseId && databaseId !== "(default)" ? databaseId : "(default)";
+    dbInstance = getFirestore(undefined, targetDbId);
   }
   return dbInstance;
 }

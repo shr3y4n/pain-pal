@@ -28,13 +28,10 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
-export const db = initializeFirestore(
-  app,
-  {
-    experimentalForceLongPolling: true
-  },
-  firebaseConfig.firestoreDatabaseId
-);
+export const db =
+  firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)"
+    ? initializeFirestore(app, { experimentalForceLongPolling: true }, firebaseConfig.firestoreDatabaseId)
+    : initializeFirestore(app, { experimentalForceLongPolling: true });
 
 export const signInWithGoogle = async () => {
   try {
