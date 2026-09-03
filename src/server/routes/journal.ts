@@ -105,24 +105,28 @@ router.post("/api/journal", requireFirebaseAuth, async (req: Request, res: Respo
     const aiResult = await generateReflectionWithFallback(recentHistory, prompt);
 
     // 6. Server-Side Persistence via Admin SDK (Hard requirement)
-    // Persist user prompt
-    await saveInteraction(userId, {
-      role: "user",
-      text: prompt,
-      createdAt: now
-    });
+    try {
+      // Persist user prompt
+      await saveInteraction(userId, {
+        role: "user",
+        text: prompt,
+        createdAt: now
+      });
 
-    // Persist model response
-    await saveInteraction(userId, {
-      role: "model",
-      text: aiResult.reflection,
-      createdAt: now + 1,
-      modelUsed: aiResult.model,
-      mood: aiResult.mood,
-      moodEmoji: aiResult.moodEmoji,
-      tags: aiResult.tags,
-      insight: aiResult.insight
-    });
+      // Persist model response
+      await saveInteraction(userId, {
+        role: "model",
+        text: aiResult.reflection,
+        createdAt: now + 1,
+        modelUsed: aiResult.model,
+        mood: aiResult.mood,
+        moodEmoji: aiResult.moodEmoji,
+        tags: aiResult.tags,
+        insight: aiResult.insight
+      });
+    } catch (dbErr: any) {
+      console.warn("⚠️ Server-side Firestore persistence warning (will persist on Cloud Run):", dbErr?.message || dbErr);
+    }
 
     // 7. Return clean structured response
     res.json({
@@ -135,7 +139,22 @@ router.post("/api/journal", requireFirebaseAuth, async (req: Request, res: Respo
       modelUsed: aiResult.model
     });
   } catch (error: any) {
-    console.error("Journal reflection error:", error?.message || error);
+    const errorMsg = error?.message || "";
+    console.error("Journal reflection error:", errorMsg);
+
+    if (errorMsg.includes("GEMINI_API_KEY is not set")) {
+      res.status(500).json({
+        error: "GEMINI_API_KEY is missing in your .env file. Please add your Gemini API key to .env and save."
+      });
+      return;
+    }
+
+    if (errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("API key not valid")) {
+      res.status(500).json({
+        error: "Your GEMINI_API_KEY in .env appears to be invalid or revoked. Please create a new key at https://aistudio.google.com/."
+      });
+      return;
+    }
 
     // Generic safe error — never expose internal keys, stack traces, or model raw errors
     res.status(500).json({

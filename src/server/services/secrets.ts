@@ -8,6 +8,7 @@
  */
 
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import dotenv from "dotenv";
 
 let cachedGeminiApiKey: string | null = null;
 
@@ -76,8 +77,14 @@ export async function initializeGeminiSecret(): Promise<string> {
  */
 export function getCachedGeminiSecret(): string {
   if (!cachedGeminiApiKey) {
+    dotenv.config();
+    const envKey = process.env.GEMINI_API_KEY?.trim();
+    if (envKey) {
+      cachedGeminiApiKey = envKey;
+      return cachedGeminiApiKey;
+    }
     throw new Error(
-      "Gemini API key has not been initialized. Server startup secret resolution may have failed."
+      "GEMINI_API_KEY is not set. Please add your Gemini API key from https://aistudio.google.com/ to your .env file."
     );
   }
   return cachedGeminiApiKey;
