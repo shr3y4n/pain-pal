@@ -12,7 +12,7 @@ Pain-Pal is a secure, user-authenticated AI journaling and reflection companion 
 
 Modern life brings emotional friction—workplace burnout, relationship transitions, decision fatigue, and quiet stress. While traditional blank-page journaling is valuable, many individuals stare at an empty cursor unsure of where to begin, or feel isolated in their thoughts.
 
-Conversely, seeking advice from general-purpose AI chatbots often introduces serious privacy risks, lack of contextual memory, potential prompt injection, and inadequate crisis safeguards.
+Conversely, seeking advice from general-purpose AI chatbots introduces serious privacy risks, lack of contextual memory, potential prompt injection, and inadequate crisis safeguards.
 
 **Pain-Pal addresses these challenges by providing:**
 1. **Grounded Empathy:** Structured, gentle reflections that mirror feelings without prescribing medical treatments or offering clinical diagnoses.
@@ -26,11 +26,12 @@ Conversely, seeking advice from general-purpose AI chatbots often introduces ser
 - **Google SSO (Firebase Auth):** Frictionless federated single sign-on via Google (`signInWithPopup`). Zero password handling in custom code.
 - **Genuine Multi-Turn Gemini Context:** Maintains conversational history using the official `@google/genai` multi-turn structure (`{ role: "user" | "model", parts: [...] }`) with an automated model fallback ladder.
 - **Server-Side Firestore Persistence:** Guaranteed persistence using Firebase Admin SDK on Cloud Run. Conversation turns are authoritatively saved under `users/{userId}/interactions`.
+- **Authenticated History API:** Server-authoritative `GET /api/journal/history` endpoint returning bounded, deterministically ordered interactions strictly for the verified UID.
 - **Strict Firestore Security Hardening:** Schema-constrained rules enforcing owner-only reads, strict field whitelisting, size limits, and client immutability (`allow update, delete: if false;`).
 - **Google Cloud Secret Manager:** Operational API keys are dynamically retrieved in production via `@google-cloud/secret-manager` and cached at startup—zero hardcoded secrets.
 - **Pre-AI Safety Routing Layer:** Lightweight server-side classifier that intercepts explicit self-harm or violence statements *before* calling Gemini, returning calm crisis resources and Tele-MANAS/988 hotlines.
 - **Prompt Injection Boundaries:** Architectural separation between trusted system instructions and untrusted user narrative text.
-- **Thoughtful Journaling UX:** Reflection starter suggestions, multiline editor (Enter to send, Shift+Enter for newline), 5,000-character counter, dynamic model badge, and responsive timeline with auto-scroll.
+- **Thoughtful Journaling UX:** Modular React architecture, reflection starter suggestions, multiline editor (Enter to send, Shift+Enter for newline), 5,000-character counter, dynamic model badge, and responsive timeline with auto-scroll.
 
 ---
 
@@ -39,7 +40,7 @@ Conversely, seeking advice from general-purpose AI chatbots often introduces ser
 ```mermaid
 flowchart TD
     subgraph Client["Client Browser (React + Vite SPA)"]
-        UI["Pain-Pal Journal UI"]
+        UI["Pain-Pal Journal Workspace\n(Landing / History / Timeline / Composer)"]
         AuthClient["Firebase Auth (Google SSO)"]
         FSClient["Firestore Real-time Listener"]
     end
@@ -47,6 +48,7 @@ flowchart TD
     subgraph Backend["Google Cloud Run (Express API Service)"]
         AuthMiddleware["Firebase Auth Token Verification\n(getAuth().verifyIdToken())"]
         RateLimiter["Per-User Rate Limiter (20 req/min)"]
+        HistoryEndpoint["GET /api/journal/history\n(Bounded History Loader)"]
         SafetyRouter{"Safety Routing Layer\n(Acute Danger Classifier)"}
         StaticSafety["Verified Crisis Response\n(Tele-MANAS, Kiran, 988, 112)"]
         HistoryLoader["Recent History Loader\n(Last 8 turns)"]
@@ -63,7 +65,9 @@ flowchart TD
     %% Client Interactions
     UI -->|1. Sign in with Google| AuthClient
     AuthClient -->|Obtains ID Token| UI
-    UI -->|2. POST /api/journal (Bearer JWT)| AuthMiddleware
+    UI -->|2. GET /api/journal/history| HistoryEndpoint
+    HistoryEndpoint -->|Fetch initial turns| FirestoreDB
+    UI -->|3. POST /api/journal (Bearer JWT)| AuthMiddleware
     FSClient -.->|Real-time Snapshot Sync| FirestoreDB
 
     %% Backend Flow
@@ -73,9 +77,9 @@ flowchart TD
     StaticSafety --> ServerPersistence
 
     SafetyRouter -->|Normal Reflection| HistoryLoader
-    HistoryLoader -->|Query turns| FirestoreDB
+    HistoryLoader -->|Query recent context| FirestoreDB
     HistoryLoader --> GeminiService
-    GCPSecrets -.->|Loaded at bootstrap| GeminiService
+    GCPSecrets -.->|Loaded once at bootstrap| GeminiService
     GeminiService -->|Multi-turn generation| GeminiAPI
     GeminiAPI -->|Structured JSON Reflection| ServerPersistence
 
@@ -132,27 +136,49 @@ The safety routing layer is a rule-based safeguard intended to promote human sup
 ```
 pain-pal/
 ├── src/
-│   ├── App.tsx                     # Main Pain-Pal React application component
-│   ├── main.tsx                    # React DOM root entry
-│   ├── index.css                   # Tailwind CSS styling
-│   ├── lib/
-│   │   └── firebase.ts             # Client Firebase Auth & Firestore initialization
-│   └── server/                     # Modular server-side architecture
-│       ├── types.ts                # Shared TypeScript interfaces & types
+│   ├── App.tsx                     # Top-level application controller
+│   ├── main.tsx                    # React DOM root entrypoint
+│   ├── index.css                   # Tailwind styles, editorial fonts & scrollbars
+│   ├── firebase.ts                 # Clean client Firebase Auth & Firestore init
+│   ├── types/
+│   │   └── journal.ts              # Client interaction & message definitions
+│   ├── hooks/
+│   │   ├── useAuth.ts              # Firebase auth session & Google SSO hook
+│   │   └── useJournal.ts           # History loader & reflection submission hook
+│   ├── components/
+│   │   ├── LandingPage.tsx         # Serene editorial landing & welcome screen
+│   │   ├── GoogleSignInButton.tsx  # Accessible Google OAuth sign-in button
+│   │   ├── JournalWorkspace.tsx    # Central workspace layout controller
+│   │   ├── JournalSidebar.tsx      # Chronological history (Today/Yesterday/Earlier)
+│   │   ├── JournalConversation.tsx # Scrollable conversation timeline & auto-scroll
+│   │   ├── JournalMessage.tsx      # Editorial reflection card & user entry bubble
+│   │   ├── JournalComposer.tsx     # Multiline composer, shortcuts & char counter
+│   │   ├── EmptyState.tsx          # "What's on your mind?" with starter prompts
+│   │   ├── LoadingState.tsx        # Subtle thinking indicator ("Reflecting...")
+│   │   ├── ErrorState.tsx          # Non-technical polite error banner
+│   │   ├── UserMenu.tsx            # Header bar with user badge & sign-out
+│   │   └── SafetyResponse.tsx      # Calm crisis card with verified helplines
+│   └── server/                     # Modular backend architecture
+│       ├── types.ts                # Shared server interfaces
 │       ├── middleware/
-│       │   └── auth.ts             # Firebase JWT verification & user rate limiting
+│       │   └── auth.ts             # JWT verification & per-user rate limiting
 │       ├── routes/
-│       │   └── journal.ts          # POST /api/journal endpoint & payload handling
+│       │   └── journal.ts          # POST /api/journal & GET /api/journal/history
 │       └── services/
 │           ├── secrets.ts          # Secret Manager & environment credential loader
-│           ├── safety.ts           # Safety routing classifier & crisis resources
+│           ├── safety.ts           # Pre-AI safety routing classifier
 │           ├── gemini.ts           # Multi-turn Gemini fallback generation ladder
 │           └── firestore.ts        # Admin SDK persistence & user history retrieval
 ├── tests/
-│   ├── safety.test.ts              # Unit tests for acute crisis vs. normal sadness
+│   ├── safety.test.ts              # Acute crisis detection vs. normal sadness
 │   ├── validation.test.ts          # Boundary, payload shape & character limit tests
 │   ├── gemini-context.test.ts      # Multi-turn context builder tests
-│   └── rate-limit.test.ts          # Per-user rate-limiting tests
+│   ├── rate-limit.test.ts          # Per-user rate-limiting tests
+│   ├── prompt-injection.test.ts    # Prompt injection defense tests
+│   └── history-endpoint.test.ts    # Bounded history & schema key validation tests
+├── .github/
+│   └── workflows/
+│       └── deploy-pages.yml        # Turnkey GitHub Actions workflow for GitHub Pages
 ├── Dockerfile                      # Multi-stage container definition for Cloud Run
 ├── .dockerignore                   # Docker build context exclusion list
 ├── firestore.rules                 # Hardened Firestore Security Rules
@@ -213,7 +239,7 @@ pain-pal/
 Pain-Pal includes automated test suites powered by **Vitest**:
 
 ```bash
-# Run unit tests
+# Run all unit tests
 npm test
 
 # Run TypeScript typecheck
@@ -225,7 +251,7 @@ npm run build
 
 ---
 
-## 9. Google Cloud Run Deployment
+## 9. Google Cloud Run Deployment (Primary Target)
 
 ### 1. Enable Required GCP APIs
 ```bash
@@ -239,7 +265,7 @@ gcloud services enable \
 ### 2. Store Gemini Secret in Secret Manager
 ```bash
 gcloud secrets create GEMINI_API_KEY --replication-policy="automatic"
-echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --data-file=-
+echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets versions add GEMINI_API_KEY --data-file=-
 ```
 
 ### 3. Grant Secret Access to Cloud Run Service Account
@@ -256,7 +282,7 @@ gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
 firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-### 5. Deploy Container to Cloud Run
+### 5. Deploy Full-Stack Container to Cloud Run
 ```bash
 gcloud run deploy pain-pal \
   --source . \
@@ -275,11 +301,50 @@ gcloud run services update pain-pal \
 
 ---
 
-## 10. Environment Variables Reference
+## 10. How to Deploy to GitHub Pages
+
+### Architectural Note: Cloud Run vs. GitHub Pages
+Pain-Pal is a **full-stack application** designed for Google Cloud Run:
+- The **backend** (Node.js/Express) runs Secret Manager, verifies Google JWT tokens with Firebase Admin, executes safety routing, and calls Gemini.
+- **GitHub Pages** is a static web host (it serves only HTML, CSS, and JS files from a CDN). It **cannot** run Node.js, Express, Secret Manager, or server-side Firebase Admin code.
+
+However, you can host the **static frontend SPA** on GitHub Pages by pointing it to your deployed Cloud Run backend!
+
+### Step-by-Step GitHub Pages Deployment:
+
+#### Option A: Automated via GitHub Actions (Recommended)
+This repository includes a ready-to-use GitHub Actions workflow at `.github/workflows/deploy-pages.yml`.
+
+1. **Deploy your backend to Cloud Run** using Section 9 above to get your Cloud Run service URL (e.g. `https://pain-pal-xyz-uc.a.run.app`).
+2. **Add your Cloud Run URL to GitHub Secrets:**
+   - Go to your GitHub repository: `https://github.com/shr3y4n/pain-pal/settings/secrets/actions`
+   - Click **New repository secret**
+   - Name: `CLOUD_RUN_API_URL`
+   - Value: `https://pain-pal-xyz-uc.a.run.app` (your actual Cloud Run URL)
+3. **Enable GitHub Pages:**
+   - Go to `Settings` → `Pages`
+   - Under **Build and deployment > Source**, select **GitHub Actions**
+4. **Trigger Deployment:**
+   - Push to `main` (or run manually via `Actions` → `Deploy Frontend to GitHub Pages` → `Run workflow`).
+   - Your frontend will be live at: `https://shr3y4n.github.io/pain-pal/`!
+
+#### Option B: Manual Local Build & Push
+```bash
+# 1. Build the frontend with relative asset paths pointing to your Cloud Run URL
+VITE_API_URL="https://YOUR_CLOUD_RUN_URL" npx vite build --base=./
+
+# 2. Deploy dist/ directory using the gh-pages CLI tool
+npx gh-pages -d dist
+```
+
+---
+
+## 11. Environment Variables Reference
 
 | Variable | Description | Setting Environment |
 |---|---|---|
 | `GEMINI_API_KEY` | Google Gemini API key (Required for AI generation) | Local `.env` or Secret Manager in Cloud Run |
+| `VITE_API_URL` | Cloud Run backend URL (Optional, needed only if frontend is on GitHub Pages) | GitHub Actions secret or `.env` |
 | `NODE_ENV` | Runtime mode (`development` or `production`) | Automatically set in container |
 | `PORT` | HTTP server listening port (Default: `3000`) | Automatically injected by Cloud Run |
 | `GOOGLE_CLOUD_PROJECT` | GCP Project ID | Injected by Cloud Run environment |
@@ -287,7 +352,7 @@ gcloud run services update pain-pal \
 
 ---
 
-## 11. Evaluation Checklist
+## 12. Evaluation Checklist
 
 | Criteria | Pain-Pal Implementation | Status |
 |---|---|:---:|

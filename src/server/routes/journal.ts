@@ -144,4 +144,28 @@ router.post("/api/journal", requireFirebaseAuth, async (req: Request, res: Respo
   }
 });
 
+/**
+ * GET /api/journal/history
+ * Authenticated history retrieval endpoint.
+ * Returns bounded recent entries belonging strictly to the verified UID.
+ */
+router.get("/api/journal/history", requireFirebaseAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.uid;
+
+  try {
+    // Return up to 30 recent interactions in chronological order (oldest -> newest)
+    const history = await getUserRecentInteractions(userId, 30);
+
+    res.json({
+      success: true,
+      interactions: history
+    });
+  } catch (error: any) {
+    console.error("Failed to retrieve journal history:", error?.message || error);
+    res.status(500).json({
+      error: "Unable to retrieve your journal history at this time."
+    });
+  }
+});
+
 export default router;
