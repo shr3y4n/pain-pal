@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+test*.ts
+test*.js
+test-*.ts
+test-*.js
+logs.js
+.vscode/
+.idea/

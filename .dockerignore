@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.git
+.gitignore
+*.log
+test*.ts
+test*.js
